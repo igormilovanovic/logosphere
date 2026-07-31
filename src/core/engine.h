@@ -179,7 +179,13 @@ public:
     // Engine-owned drawing surface for UI widgets, HUDs, and debug
     // overlays. Callers receive it as the IDrawSurface interface so
     // the concrete implementation can change without touching them.
-    IDrawSurface& get_draw_surface() { return *draw_surface_; }
+    // Backed by overlay_surface_ (the ui_buffer_ plane draw_ui_overlays()
+    // composites onto the presented frame every frame) rather than
+    // draw_surface_ (the 3D scene buffer, which the GPU rasterization
+    // path never reads back from) -- draw_surface_ predates the overlay
+    // plane split and nothing else in the engine still reads it as the
+    // presented target.
+    IDrawSurface& get_draw_surface() { return *overlay_surface_; }
     Logosphere::Rendering::PixelPicker& get_pixel_picker() { return *pixel_picker_; }
     Logosphere::Effects::MutationPlaybackRegistry& get_mutation_playback_registry() {
         return mutation_playback_registry_;

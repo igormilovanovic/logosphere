@@ -1,0 +1,259 @@
+id: https://logosphere.dev/pop/schema
+name: pop
+title: Prince of Persia - a Logosphere example
+description: >-
+  Game ontology for the Prince of Persia example: a tile-based side-view
+  platformer level with traps, gates, a sword-fighting guard, and a
+  countdown. Extends Logosphere's base types with level geometry and the
+  two combatants.
+
+  Relations: this schema declares no new relation types on purpose.
+  scripts/generate_registry.py derives the registry's relation set
+  exclusively from the engine's WorldRelationType enum, so a
+  game-declared relation enum would generate nothing (see
+  examples/eden/schema/eden.yaml, whose EdenRelationType is decorative).
+  The game therefore reuses the engine's own relations, as logotron does:
+    CONTAINS - Level contains each tracked Tile entity
+    HAS_PART - character owns its body parts and its sword
+    SUPPORTS - sword arm supports the sword, which is what makes the
+               capability cascade (a wounded arm degrades the blade) work
+    MANAGES  - a pressure plate manages the gate it raises
+  Character position is carried by the tile_x / tile_y properties rather
+  than a relation, matching how logotron stores cycle coordinates.
+
+default_range: string
+
+prefixes:
+  linkml: https://w3id.org/linkml/
+  pop: https://logosphere.dev/pop/schema/
+  logosphere: https://logosphere.dev/schema/
+
+imports:
+  - linkml:types
+  - logosphere
+
+# -------------------------------------------------------------------
+# Enums
+# -------------------------------------------------------------------
+
+enums:
+  TileKind:
+    description: What occupies a single cell of the level grid.
+    permissible_values:
+      EMPTY:
+        description: Open air - the Prince falls through
+      FLOOR:
+        description: Solid ground that can be stood on
+      WALL:
+        description: Impassable block
+      SPIKES:
+        description: Deadly spike trap
+      LOOSE_FLOOR:
+        description: Floor tile that collapses once stepped on
+      GATE:
+        description: Barrier, passable only while raised
+      EXIT:
+        description: Level exit - reaching it wins
+      POTION:
+        description: Healing potion resting on solid ground
+      PRESSURE_PLATE:
+        description: Plate that raises its linked gate when stepped on
+
+  PrinceState:
+    description: Movement state of a character in the level.
+    permissible_values:
+      STANDING:
+        description: Idle on solid ground
+      RUNNING:
+        description: Moving across tiles
+      CROUCHING:
+        description: Ducked, can pass low gaps
+      STAND_JUMPING:
+        description: Standing jump, clears a one-tile gap
+      RUN_JUMPING:
+        description: Running jump, clears a wider gap
+      CLIMBING:
+        description: Pulling up onto a ledge
+      HANGING:
+        description: Gripping a ledge after a fall
+      FALLING:
+        description: In free fall
+      FIGHTING:
+        description: Engaged in a sword fight
+      DEAD:
+        description: Killed by a trap, a fall, or a blade
+      ESCAPED:
+        description: Reached the level exit
+
+  GateState:
+    description: Whether a gate blocks passage.
+    permissible_values:
+      CLOSED:
+        description: Lowered, blocks the tile
+      OPEN:
+        description: Raised, the tile is passable
+
+  PopEventType:
+    description: Prince of Persia specific narrative events.
+    permissible_values:
+      TRAP_SPRUNG:
+        description: A trap triggered
+      LEDGE_GRABBED:
+        description: A fall was arrested on a ledge
+      BLADE_CLASH:
+        description: A sword exchange resolved
+      POTION_DRUNK:
+        description: A potion was consumed
+      LEVEL_ESCAPED:
+        description: The exit was reached
+      SANDS_RAN_OUT:
+        description: The countdown expired
+
+# -------------------------------------------------------------------
+# Entity types
+# -------------------------------------------------------------------
+
+classes:
+  Level:
+    is_a: WorldEntity
+    description: One playable level. Owns its tiles via HAS_PART.
+    slots:
+      - grid_width
+      - grid_height
+      - time_limit_seconds
+
+  Tile:
+    is_a: Structure
+    description: >-
+      A single cell of the level grid. Only cells the game must track
+      individually at runtime (gates, plates, loose floors, potions,
+      spikes, the exit) become entities; inert floor and empty air stay
+      in the plain Tier A grid.
+    slots:
+      - tile_x
+      - tile_y
+      - tile_kind
+
+  Gate:
+    is_a: Tile
+    description: A barrier tile raised by a pressure plate.
+    slots:
+      - gate_state
+
+  PressurePlate:
+    is_a: Tile
+    description: A tile that raises its linked gate when stepped on.
+
+  LooseFloor:
+    is_a: Tile
+    description: A floor tile that collapses one tick after being stepped on.
+
+  Spikes:
+    is_a: Tile
+    description: A spike trap. Fatal to anything that walks onto it.
+
+  Potion:
+    is_a: Tile
+    description: A healing potion resting on solid ground.
+    slots:
+      - heal_amount
+
+  Character:
+    is_a: Humanoid
+    description: >-
+      Abstract base for the level's two combatants. Carries the
+      tile position and movement state; health lives on the body
+      parts declared by the engine's body-plan helpers.
+    abstract: true
+    slots:
+      - tile_x
+      - tile_y
+      - facing
+      - movement_state
+
+  Prince:
+    is_a: Character
+    description: The player character.
+
+  Guard:
+    is_a: Character
+    description: A palace guard who blocks the way with a sword.
+    slots:
+      - sword_skill
+
+  Sword:
+    is_a: WorldEntity
+    description: >-
+      A blade. Modeled as a HAS_PART of its wielder with a
+      manipulation capability, so a wounded sword arm degrades it
+      through the engine's cascade mechanism.
+
+# -------------------------------------------------------------------
+# Prince of Persia events
+# -------------------------------------------------------------------
+
+  PopEvent:
+    is_a: Event
+    description: Prince of Persia narrative event.
+    slot_usage:
+      event_type:
+        range: PopEventType
+
+# -------------------------------------------------------------------
+# Slots
+# -------------------------------------------------------------------
+
+slots:
+  grid_width:
+    range: integer
+    minimum_value: 1
+    maximum_value: 256
+    description: Level width in tiles.
+  grid_height:
+    range: integer
+    minimum_value: 1
+    maximum_value: 256
+    description: Level height in tiles.
+  time_limit_seconds:
+    range: float
+    minimum_value: 1.0
+    maximum_value: 86400.0
+    description: >-
+      Countdown for the level. Bounded so a mutation cannot make the
+      level unwinnable (0) or effectively untimed (> one day).
+  tile_x:
+    range: integer
+    minimum_value: 0
+    maximum_value: 255
+    description: Zero-based column in the level grid.
+  tile_y:
+    range: integer
+    minimum_value: 0
+    maximum_value: 255
+    description: Zero-based row in the level grid, counted from the top.
+  tile_kind:
+    range: TileKind
+    description: What occupies this cell.
+  gate_state:
+    range: GateState
+    description: Whether this gate currently blocks passage.
+  heal_amount:
+    range: float
+    minimum_value: 0.0
+    maximum_value: 100.0
+    description: Health restored when this potion is drunk.
+  facing:
+    range: integer
+    minimum_value: -1
+    maximum_value: 1
+    description: Facing direction along the level's x axis (-1 left, +1 right).
+  movement_state:
+    range: PrinceState
+    description: Current movement state of the character.
+  sword_skill:
+    range: float
+    minimum_value: 0.0
+    maximum_value: 1.0
+    description: >-
+      Blade skill, driving parry frequency and counterattack timing.
+      Bounded so a mutation cannot create an unbeatable or inert guard.

@@ -7,6 +7,46 @@ follow [Semantic Versioning](https://semver.org) on a 0.x line
 
 ## [Unreleased]
 
+- **Fix: `IApplication::render_game()` was never called, and
+  `Engine::get_draw_surface()` pointed at the wrong buffer.** Building
+  the Prince of Persia GUI (below) surfaced two dead-on-arrival pieces of
+  the app/HUD-overlay contract: `render_game()` — documented as "called
+  after engine rendering, before display" — had no call site anywhere in
+  `Engine`, and `get_draw_surface()` returned `draw_surface_` (the 3D
+  scene buffer), not `overlay_surface_` (the `ui_buffer_` plane
+  `draw_ui_overlays()` actually composites onto the presented frame) —
+  despite its own doc comment describing it as the surface for "UI
+  widgets, HUDs, and debug overlays." Any app drawing through
+  `get_draw_surface()` rendered into a buffer nothing read back from
+  under GPU rasterization, and `render_game()` overrides were silently
+  never invoked. Fixed in `src/core/engine.h`/`engine.cpp`: retargeted
+  `get_draw_surface()` to `overlay_surface_`, and added the missing
+  `application_->render_game()` call in `draw_ui_overlays()`, after the
+  frame's dirty-region clear and before `ui_system_->render()`.
+- **Prince of Persia windowed GUI.** `examples/pop/` gained a `full`-
+  profile macOS frontend (`pop_gui`) alongside the console one, drawing
+  the identical, unmodified tile simulation through the engine's existing
+  `IDrawSurface` interface rather than rebuilding the game on the physics
+  engine. A second `IDrawSurface` implementation (`SvgDrawSurface`) lets a
+  new tool, `pop_record_demo`, replay a scripted winning route through the
+  same drawing code to record `demo_gui.svg` — so the recording is
+  pixel-for-pixel what the live window draws. The game loop (`Game`,
+  `tick()`) moved out of `main.cpp` into `game.h`/`game.cpp` so the
+  console, GUI and demo recorder all drive one simulation.
+  `examples/pop/run_gui.sh` builds and launches `pop_gui` in one step,
+  installing `glfw`/the Metal Toolchain if missing and forcing Apple
+  clang so a Homebrew-GCC `$CC`/`$CXX` (common with a conda toolchain on
+  `PATH`) doesn't fail on the engine's Objective-C++ sources.
+- **Prince of Persia example.** A headless/console platformer
+  (`examples/pop/`) built on the knowledge graph: a tile level with
+  spikes, a collapsing floor, a pressure-plate gate and a sword-fighting
+  guard, against a sixty-minute countdown. Notably it lets the engine do
+  the work rather than hand-coding it — the Prince limps because a
+  `health_below:50` response rule on his legs feeds
+  `CapabilityProfile` → `DynamicsParams` → movement speed, and his sword
+  degrades with the arm that holds it through a `SUPPORTS` cascade.
+  Splits into a pure-logic tier that links no library at all and a
+  knowledge-graph tier, so three of its four test suites need no engine.
 - **Tic-Tac-Toe example.** A headless/console example game
   (`examples/tictactoe/`) driven entirely through `kg::KGModule` and the
   ontology-extension/event-bus APIs, with no rendering or `IApplication`

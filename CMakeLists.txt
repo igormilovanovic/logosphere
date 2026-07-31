@@ -247,6 +247,71 @@ target_include_directories(test_tictactoe PRIVATE
 target_compile_features(test_tictactoe PRIVATE cxx_std_17)
 add_test(NAME test_tictactoe COMMAND test_tictactoe)
 
+# ============================================================================
+# Prince of Persia example — headless/console, links only logosphere_core
+# ============================================================================
+# Same placement rationale as tic-tac-toe above: registered before the
+# profile short-circuits so it builds under core/physics/full alike.
+#
+# The game splits into a pure tier (level/prince/combat/render — no engine,
+# no KG) and a KG-bridge tier (world.cpp), following the split
+# examples/logotron/src/cycle.h and arena.h use. The pure tests link
+# nothing at all; only test_pop_world needs logosphere_core.
+add_subdirectory(examples/pop)
+
+# Pure-tier tests: no engine, no KG, no library. Mirrors test_logotron_cycle.
+# The root include/ dir is here so test_pop_render_gui can reach
+# IDrawSurface (include/logosphere/rendering/i_draw_surface.h) -- still no
+# library to link, it's an abstract interface with no .cpp of its own.
+function(add_pop_pure_test name)
+    add_executable(${name} tests/${name}.cpp ${ARGN})
+    target_include_directories(${name} PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/examples/pop/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+    )
+    target_compile_features(${name} PRIVATE cxx_std_17)
+    add_test(NAME ${name} COMMAND ${name})
+endfunction()
+
+add_pop_pure_test(test_pop_level
+    examples/pop/src/level.cpp
+)
+add_pop_pure_test(test_pop_movement
+    examples/pop/src/level.cpp
+    examples/pop/src/prince.cpp
+)
+add_pop_pure_test(test_pop_combat
+    examples/pop/src/level.cpp
+    examples/pop/src/prince.cpp
+    examples/pop/src/combat.cpp
+)
+add_pop_pure_test(test_pop_render_gui
+    examples/pop/src/level.cpp
+    examples/pop/src/prince.cpp
+    examples/pop/src/render_ascii.cpp
+    examples/pop/src/render_gui.cpp
+    examples/pop/src/svg_draw_surface.cpp
+)
+
+# KG-bridge test: the ontology, body plans, capability-driven speed,
+# damage, and the countdown. Mirrors at_logotron_wall_visibility's shape.
+add_executable(test_pop_world
+    tests/test_pop_world.cpp
+    examples/pop/src/level.cpp
+    examples/pop/src/prince.cpp
+    examples/pop/src/combat.cpp
+    examples/pop/src/world.cpp
+    examples/pop/src/generated/pop_ontology_registry.cpp
+)
+target_link_libraries(test_pop_world PRIVATE logosphere_core)
+target_include_directories(test_pop_world PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/src
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/examples/pop/src
+)
+target_compile_features(test_pop_world PRIVATE cxx_std_17)
+add_test(NAME test_pop_world COMMAND test_pop_world)
+
 
 # Engine acceptance tests — link against the full engine library so
 # they can spin up Engine in headless mode + drive the real GPU
