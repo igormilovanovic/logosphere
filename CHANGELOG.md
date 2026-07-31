@@ -7,6 +7,32 @@ follow [Semantic Versioning](https://semver.org) on a 0.x line
 
 ## [Unreleased]
 
+- **Fix: `IApplication::render_game()` was never called, and
+  `Engine::get_draw_surface()` pointed at the wrong buffer.** Building
+  the Prince of Persia GUI (below) surfaced two dead-on-arrival pieces of
+  the app/HUD-overlay contract: `render_game()` — documented as "called
+  after engine rendering, before display" — had no call site anywhere in
+  `Engine`, and `get_draw_surface()` returned `draw_surface_` (the 3D
+  scene buffer), not `overlay_surface_` (the `ui_buffer_` plane
+  `draw_ui_overlays()` actually composites onto the presented frame) —
+  despite its own doc comment describing it as the surface for "UI
+  widgets, HUDs, and debug overlays." Any app drawing through
+  `get_draw_surface()` rendered into a buffer nothing read back from
+  under GPU rasterization, and `render_game()` overrides were silently
+  never invoked. Fixed in `src/core/engine.h`/`engine.cpp`: retargeted
+  `get_draw_surface()` to `overlay_surface_`, and added the missing
+  `application_->render_game()` call in `draw_ui_overlays()`, after the
+  frame's dirty-region clear and before `ui_system_->render()`.
+- **Prince of Persia windowed GUI.** `examples/pop/` gained a `full`-
+  profile macOS frontend (`pop_gui`) alongside the console one, drawing
+  the identical, unmodified tile simulation through the engine's existing
+  `IDrawSurface` interface rather than rebuilding the game on the physics
+  engine. A second `IDrawSurface` implementation (`SvgDrawSurface`) lets a
+  new tool, `pop_record_demo`, replay a scripted winning route through the
+  same drawing code to record `demo_gui.svg` — so the recording is
+  pixel-for-pixel what the live window draws. The game loop (`Game`,
+  `tick()`) moved out of `main.cpp` into `game.h`/`game.cpp` so the
+  console, GUI and demo recorder all drive one simulation.
 - **Prince of Persia example.** A headless/console platformer
   (`examples/pop/`) built on the knowledge graph: a tile level with
   spikes, a collapsing floor, a pressure-plate gate and a sword-fighting

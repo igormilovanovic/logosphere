@@ -1,22 +1,17 @@
 // Prince of Persia on Logosphere - headless/console example.
 //
 // The game loop only orchestrates: the pure tiers (level.h, prince.h,
-// combat.h, render_ascii.h) decide what happens, and world.h projects it
-// into the engine's knowledge graph, damage system and clock. Nothing
-// here touches rendering, GLFW or Metal, so this builds under every
-// LOGOSPHERE_PROFILE. See POP.md for the windowed macOS path.
+// combat.h, render_ascii.h) decide what happens, game.h drives one tick at
+// a time, and world.h projects it into the engine's knowledge graph,
+// damage system and clock. Nothing here touches rendering, GLFW or Metal,
+// so this builds under every LOGOSPHERE_PROFILE. See POP.md for the
+// windowed macOS path.
 //
 // Usage:
 //   ./pop [--seed N]
 
-#include "combat.h"
-#include "level.h"
-#include "level_one.h"
-#include "prince.h"
+#include "game.h"
 #include "render_ascii.h"
-#include "world.h"
-
-#include "core/game_time.h"
 
 #include <cstdlib>
 #include <iostream>
@@ -24,10 +19,6 @@
 #include <string>
 
 namespace {
-
-// One tick of the countdown. The original gives you an hour; a clean run
-// of this level takes well under two minutes of game time.
-constexpr double kTickSeconds = 1.0;
 
 void print_help() {
     std::cout <<
@@ -39,114 +30,22 @@ void print_help() {
         "  q  quit             ?  this help\n";
 }
 
-struct Game {
-    pop::Level lv;
-    std::unique_ptr<pop::World> world;
-    pop::Character prince;
-    pop::Character guard;
-    pop::Fighter prince_fighter;
-    pop::Fighter guard_fighter;
-    uint32_t rng = 0x1234567u;
-    bool finished = false;
-};
-
 void narrate(const std::string& text) {
     std::cout << "  " << text << "\n";
-}
-
-// One tick. Returns false once the game has ended.
-bool tick(Game& g, pop::Action action, pop::CombatAction combat_action) {
-    if (g.finished) return false;
-
-    if (pop::in_sword_range(g.prince, g.guard)) {
-        pop::ExchangeResult r = pop::combat_tick(
-            g.prince, g.prince_fighter, g.guard, g.guard_fighter, combat_action, g.rng);
-
-        if (r.prince_was_parried) narrate("your blade is turned aside");
-        if (r.guard_was_parried) narrate("you parry the guard's swing");
-        if (r.prince_hit_guard) {
-            pop::apply_sword_damage(*g.world, g.world->guard_e, r.damage_to_guard);
-            narrate("you cut the guard");
-        }
-        if (r.guard_hit_prince) {
-            pop::apply_sword_damage(*g.world, g.world->prince_e, r.damage_to_prince);
-            narrate("the guard's blade finds you");
-        }
-        if (r.guard_died) narrate("the guard falls");
-        if (r.prince_died) narrate("you are slain");
-    } else {
-        pop::StepResult r = pop::step_character(
-            g.prince, g.lv, action, g.world->cached_speed_scale);
-
-        switch (r.outcome) {
-            case pop::StepOutcome::Idle:
-            case pop::StepOutcome::Moved:
-            case pop::StepOutcome::Turned:
-                break;
-            case pop::StepOutcome::DrankPotion:
-                pop::heal_prince_fully(*g.world);
-                narrate("you drink the potion; your wounds close");
-                break;
-            case pop::StepOutcome::Landed:
-                if (r.damage > 0) {
-                    pop::apply_fall_damage(*g.world, r.damage);
-                    narrate("you land hard (" + std::to_string(r.fall_height) +
-                            " storeys), and favour a leg");
-                } else {
-                    narrate("you land lightly");
-                }
-                break;
-            case pop::StepOutcome::Died:
-                pop::apply_fall_damage(*g.world, r.damage);
-                narrate("the fall kills you");
-                break;
-            default:
-                narrate(pop::to_string(r.outcome));
-                break;
-        }
-    }
-
-    pop::advance_clock(kTickSeconds);
-    pop::sync_character(*g.world, g.world->prince_e, g.prince);
-    pop::sync_character(*g.world, g.world->guard_e, g.guard);
-
-    if (g.prince.state == pop::PrinceState::Escaped) {
-        std::cout << "\nYou slip through the door. The palace is behind you.\n";
-        g.finished = true;
-    } else if (!g.prince.alive()) {
-        std::cout << "\nThe Prince is dead.\n";
-        g.finished = true;
-    } else if (pop::time_expired(*g.world)) {
-        std::cout << "\nThe last grain falls. Out of time.\n";
-        g.finished = true;
-    }
-    return !g.finished;
 }
 
 } // namespace
 
 int main(int argc, char** argv) {
-    Game g;
+    uint32_t seed = 0x1234567u;
     for (int i = 1; i < argc; ++i) {
         const std::string arg = argv[i];
         if (arg == "--seed" && i + 1 < argc) {
-            g.rng = static_cast<uint32_t>(std::strtoul(argv[++i], nullptr, 10));
+            seed = static_cast<uint32_t>(std::strtoul(argv[++i], nullptr, 10));
         }
     }
 
-    g.lv = pop::level_one();
-    g.world = pop::create_world(g.lv);
-
-    GameTime::reset();
-    GameTime::initialize(0.0);
-
-    g.prince.x = pop::kPrinceStartX;
-    g.prince.y = pop::kPrinceStartY;
-    g.prince.facing = 1;
-    g.guard.x = pop::kGuardStartX;
-    g.guard.y = pop::kGuardStartY;
-    g.guard.facing = -1;
-    g.guard_fighter.skill = pop::kGuardSkill;
+    pop::Game g = pop::new_game(seed);
 
     // The knowledge graph emits on every property and relation write once
     // a bus is attached, so the game observes rather than logs by hand.
@@ -156,9 +55,6 @@ int main(int argc, char** argv) {
                       << " to entity " << (e.target_entity_id ? *e.target_entity_id : "?")
                       << "\n";
         });
-
-    pop::sync_character(*g.world, g.world->prince_e, g.prince);
-    pop::sync_character(*g.world, g.world->guard_e, g.guard);
 
     std::cout << "Prince of Persia on Logosphere\n\n";
     print_help();
@@ -194,7 +90,7 @@ int main(int argc, char** argv) {
         }
 
         for (int i = 0; i < count; ++i) {
-            if (!tick(g, action, combat_action)) break;
+            if (!pop::tick(g, action, combat_action, narrate)) break;
         }
 
         std::cout << "\n" << pop::render_frame(g.lv, g.prince, &g.guard,

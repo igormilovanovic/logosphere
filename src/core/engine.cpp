@@ -1561,6 +1561,15 @@ void Engine::draw_ui_overlays() {
     }
     ui_buffer_.reset_dirty_bounds();
 
+    // App-specific overlay content (IApplication::render_game -- games
+    // drawing a HUD/scene through get_draw_surface()). Runs after the
+    // previous frame's dirty region is cleared and before ui_system_
+    // draws its own widgets, so app draws land in this frame's overlay
+    // and aren't clipped by widgets drawn on top, matching the
+    // documented "after engine rendering, before display" contract in
+    // include/application.h. This was previously never called.
+    if (application_) application_->render_game();
+
     if (debug_overlay_.is_enabled()) {
         debug_overlay_.render(ui_system_, this, renderer_.get());
     }

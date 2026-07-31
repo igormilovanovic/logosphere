@@ -260,10 +260,14 @@ add_test(NAME test_tictactoe COMMAND test_tictactoe)
 add_subdirectory(examples/pop)
 
 # Pure-tier tests: no engine, no KG, no library. Mirrors test_logotron_cycle.
+# The root include/ dir is here so test_pop_render_gui can reach
+# IDrawSurface (include/logosphere/rendering/i_draw_surface.h) -- still no
+# library to link, it's an abstract interface with no .cpp of its own.
 function(add_pop_pure_test name)
     add_executable(${name} tests/${name}.cpp ${ARGN})
     target_include_directories(${name} PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/examples/pop/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
     )
     target_compile_features(${name} PRIVATE cxx_std_17)
     add_test(NAME ${name} COMMAND ${name})
@@ -280,6 +284,13 @@ add_pop_pure_test(test_pop_combat
     examples/pop/src/level.cpp
     examples/pop/src/prince.cpp
     examples/pop/src/combat.cpp
+)
+add_pop_pure_test(test_pop_render_gui
+    examples/pop/src/level.cpp
+    examples/pop/src/prince.cpp
+    examples/pop/src/render_ascii.cpp
+    examples/pop/src/render_gui.cpp
+    examples/pop/src/svg_draw_surface.cpp
 )
 
 # KG-bridge test: the ontology, body plans, capability-driven speed,

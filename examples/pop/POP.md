@@ -4,11 +4,15 @@ A single palace level, side-on: run and jump past a spiked pit and a floor
 that gives way, open a gate, beat a guard with a sword, and reach the door
 before the sand runs out.
 
-It is a headless console game. It builds under every `LOGOSPHERE_PROFILE`
+The console frontend (`pop`) builds under every `LOGOSPHERE_PROFILE`
 (`core`, `physics`, `full`) — including plain Linux, where the full engine
-(software rasterizer, Metal lighting, GLFW) does not build at all.
+(software rasterizer, Metal lighting, GLFW) does not build at all. A
+windowed macOS frontend (`pop_gui`) draws the identical simulation; see
+"Windowed (macOS) version" below.
 
 ![Terminal recording of Prince of Persia on Logosphere](demo.svg)
+
+![Windowed recording of Prince of Persia on Logosphere](demo_gui.svg)
 
 ## Build and play
 
@@ -41,9 +45,9 @@ defence, because you cannot walk away from a fight.
 Run the tests:
 
 ```bash
-cmake --build build --target test_pop_level test_pop_movement test_pop_combat test_pop_world
+cmake --build build --target test_pop_level test_pop_movement test_pop_combat test_pop_world test_pop_render_gui
 ./build/test_pop_level && ./build/test_pop_movement && \
-./build/test_pop_combat && ./build/test_pop_world
+./build/test_pop_combat && ./build/test_pop_world && ./build/test_pop_render_gui
 ```
 
 ## How it maps onto the engine
@@ -100,50 +104,66 @@ own relations, as logotron does: `CONTAINS` for the level's tiles,
 
 ## Code structure
 
-Two tiers, following `examples/logotron/src/cycle.h` and `arena.h`:
+Three tiers, following `examples/logotron/src/cycle.h` and `arena.h`:
 
 | Tier | Files | Depends on |
 | --- | --- | --- |
 | Pure logic | `level`, `prince`, `combat`, `render_ascii`, `level_one.h` | nothing |
+| Shared game loop | `game` | the tiers above + `world` |
 | KG bridge | `world` | `logosphere_core` |
+| GUI rendering | `render_gui` | `IDrawSurface` (no GLFW/Metal directly) |
 
-`main.cpp` only orchestrates. Three of the four test suites link no
+`game.h` (`Game` + `tick()`) is the one place that decides what a tick
+does; `main.cpp` (console), `pop_app.cpp` (windowed GUI) and
+`tools/record_demo.cpp` (the recorded demo) all drive it, so there is
+exactly one simulation, not three. Three of the five test suites link no
 library at all — the rules of the game are verifiable without an engine.
 
 ## Windowed (macOS) version
 
-This example skips `Logosphere::IApplication` and `Engine`, which need the
-`full` profile (macOS arm64, GLFW, Metal). To grow it into a windowed
-example like `examples/eden/`:
+`pop_gui` is the windowed macOS frontend, built in the `full` profile
+alongside `examples/eden/`. It reuses `level`/`prince`/`combat`/`world`/
+`game` completely unchanged — the tile simulation and its 238+ existing
+assertions stay the ground truth — and adds a thin drawing layer instead
+of rebuilding the game on the physics engine:
 
-1. Implement `class PopApp : public Logosphere::IApplication`
-   (`include/application.h`, `docs/GAME_LAYER.md`). Keep it thin: it
-   should call into the existing pure tiers, not reimplement them. Follow
-   `examples/logotron/src/logotron_app.h`, and note the rule that keeps
-   the headless build working — nothing that includes GLFW or
-   `core/engine.h` may be pulled into a `logosphere_core`-only target.
-2. Build the level out of particles. `ParticleSystem::create_floor_grid`
-   already emits `is_at_rest = true` tiles that wake when disturbed, which
-   is the engine's native loose-floor behaviour — flip
-   `is_at_rest`/`wake_particle` instead of setting the tile to `Empty`.
-   `StrataFloorGenerator::set_tile_skip_mask` will carve the gap from the
-   tilemap.
-3. Spikes become an interaction profile with a volume trigger, so
-   `bus.volume()` reports entry and the game calls `DamageSystem` from the
-   subscriber — replacing the arrival check in `resolve_arrival`.
-4. Guards can come from `HumanoidGenerator` +
-   `HumanoidLocomotion`, which already supply gait, foot planting and
-   step-climbing, plus FK punch/guard animation clips that a sword swing
-   could be built from (`include/logosphere/dynamics/animation_primitives.h`).
-5. Route `handle_key` to the same `Action` enum the console loop uses.
-6. Add a `full`-profile target. `examples/pop/CMakeLists.txt` is currently
-   reached from the root `CMakeLists.txt` *above* the profile
-   short-circuits; add the windowed executable in the same file guarded by
-   `if(LOGOSPHERE_FULL)`, linking `logosphere`, `glfw` and the Cocoa /
-   Metal / QuartzCore frameworks listed in `examples/eden/CMakeLists.txt`.
-   Do not add a second `add_subdirectory`.
+- **`render_gui.h`** is the windowed counterpart to `render_ascii.h`:
+  same inputs (`Level`, `Character`, seconds remaining), drawn as flat-
+  colored tiles and a HUD strip instead of stringified. It only depends on
+  `IDrawSurface` (`include/logosphere/rendering/i_draw_surface.h`) — an
+  existing narrow drawing interface (`fill_rect`, `draw_line`,
+  `draw_string`, ...) already used for engine HUDs/widgets — not on GLFW
+  or Metal directly.
+- **`PopApp : public Logosphere::IApplication`** (`pop_app.h/.cpp`) is the
+  only GLFW/`Engine`-touching file: it owns a `Game`, maps key presses
+  onto the same `Action`/`CombatAction` the console loop uses (one `tick()`
+  per key-press, staying turn-based), and calls `render_gui()` against
+  `Engine::get_draw_surface()` each frame. `main_gui.cpp` wires it up,
+  following `examples/logogenesis/src/main.cpp`.
+- **`SvgDrawSurface`** (`svg_draw_surface.h/.cpp`) is a second
+  `IDrawSurface` implementation, pure and platform-independent, that
+  records draw calls as SVG markup instead of pixels. `tools/record_demo.cpp`
+  drives the real `Game`/`tick()` through a scripted winning route (the
+  same route `tests/test_pop_movement.cpp`'s
+  `test_shipped_level_is_winnable` proves wins) and calls the *exact same*
+  `render_gui()` at each step to capture `demo_gui.svg` — so the recording
+  is pixel-for-pixel the live window's drawing logic, not a hand-drawn
+  approximation. Regenerate it with `./build/pop/pop_record_demo`.
 
-Be aware of two real gaps before starting: the engine has **no jump,
-ledge-grab or climb API**, and its locomotion drives XY while a side view
-needs XZ. Step climbing (`src/animation/humanoid_locomotion.cpp`) applies
-a vertical impulse and is the closest thing to a jump to build from.
+This intentionally does not follow the particle/physics-based sketch an
+earlier draft of this section proposed (level built from
+`ParticleSystem`/`StrataFloorGenerator`, guard driven by
+`HumanoidLocomotion`). That path means re-deriving the whole game on top
+of the physics engine before any of it renders, and runs into two real
+gaps: the engine has **no jump, ledge-grab or climb API**, and its
+locomotion drives XY while this is a side-view XZ game. Drawing the
+existing deterministic simulation through `IDrawSurface` sidesteps both
+gaps entirely and keeps the tested tile logic as the single source of
+truth for how the game behaves.
+
+```bash
+cmake -S . -B build_full -DLOGOSPHERE_PROFILE=full   # macOS only
+cmake --build build_full --target pop_gui pop_record_demo
+./build_full/pop/pop_gui              # WASD to move, space/j jump, k strike, p parry
+./build_full/pop/pop_record_demo      # regenerates examples/pop/demo_gui.svg
+```
