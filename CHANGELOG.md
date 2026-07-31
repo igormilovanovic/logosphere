@@ -7,6 +7,16 @@ follow [Semantic Versioning](https://semver.org) on a 0.x line
 
 ## [Unreleased]
 
+- **Prince of Persia example.** A headless/console platformer
+  (`examples/pop/`) built on the knowledge graph: a tile level with
+  spikes, a collapsing floor, a pressure-plate gate and a sword-fighting
+  guard, against a sixty-minute countdown. Notably it lets the engine do
+  the work rather than hand-coding it — the Prince limps because a
+  `health_below:50` response rule on his legs feeds
+  `CapabilityProfile` → `DynamicsParams` → movement speed, and his sword
+  degrades with the arm that holds it through a `SUPPORTS` cascade.
+  Splits into a pure-logic tier that links no library at all and a
+  knowledge-graph tier, so three of its four test suites need no engine.
 - **Tic-Tac-Toe example.** A headless/console example game
   (`examples/tictactoe/`) driven entirely through `kg::KGModule` and the
   ontology-extension/event-bus APIs, with no rendering or `IApplication`

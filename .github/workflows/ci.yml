@@ -78,7 +78,8 @@ jobs:
             test_logotron_round test_logotron_director \
             test_particle_shapes \
             test_interaction_ontology test_interaction_events test_interaction_profiles \
-            test_tictactoe
+            test_tictactoe \
+            test_pop_level test_pop_movement test_pop_combat test_pop_world
           do
             echo "=== $t ==="
             ./build/$t || fail=1
