@@ -161,6 +161,16 @@ existing deterministic simulation through `IDrawSurface` sidesteps both
 gaps entirely and keeps the tested tile logic as the single source of
 truth for how the game behaves.
 
+Quickest path: `./examples/pop/run_gui.sh` installs `glfw` and the Metal
+Toolchain if either is missing, configures with Apple clang (sidesteps a
+common gotcha: if `$CC`/`$CXX` point at Homebrew GCC — e.g. from a
+conda/Homebrew toolchain earlier on `PATH` — the `full` profile fails to
+compile the engine's Objective-C++ `.mm` Metal/Cocoa bridging code with
+errors like `stray '@' in program`, since GCC doesn't understand
+Objective-C++ at all), builds `pop_gui`, and launches it.
+
+Manually:
+
 ```bash
 cmake -S . -B build_full -DLOGOSPHERE_PROFILE=full   # macOS only
 cmake --build build_full --target pop_gui pop_record_demo

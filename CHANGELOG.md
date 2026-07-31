@@ -33,6 +33,10 @@ follow [Semantic Versioning](https://semver.org) on a 0.x line
   pixel-for-pixel what the live window draws. The game loop (`Game`,
   `tick()`) moved out of `main.cpp` into `game.h`/`game.cpp` so the
   console, GUI and demo recorder all drive one simulation.
+  `examples/pop/run_gui.sh` builds and launches `pop_gui` in one step,
+  installing `glfw`/the Metal Toolchain if missing and forcing Apple
+  clang so a Homebrew-GCC `$CC`/`$CXX` (common with a conda toolchain on
+  `PATH`) doesn't fail on the engine's Objective-C++ sources.
 - **Prince of Persia example.** A headless/console platformer
   (`examples/pop/`) built on the knowledge graph: a tile level with
   spikes, a collapsing floor, a pressure-plate gate and a sword-fighting
